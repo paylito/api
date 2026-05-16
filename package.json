@@ -2,7 +2,7 @@
   "name": "api",
   "version": "0.1.0",
   "description": "Payli HTTP API",
-  "main": "dist/index.js",
+  "main": "dist/src/index.js",
   "scripts": {
     "dev:start": "nodemon --exec node dist/src/index.js",
     "dev:build": "tsc --watch --excludeDirectories node_modules",

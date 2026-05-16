@@ -1,12 +1,12 @@
-FROM node:20-alpine3.20
+FROM node:24-alpine
 
 COPY package.json package-lock.json /app/
 WORKDIR /app
 
-RUN npm ci
+RUN npm i
 
 COPY . /app/
 
 RUN npm run build
 
-CMD ["node", "dist/index.js"]
+CMD ["node", "dist/src/index.js"]
