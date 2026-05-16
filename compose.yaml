@@ -1,0 +1,18 @@
+services:
+  telegram-notifier-bot:
+    environment:
+      DB_URI: mongodb://mongo:27017
+      LOG_FILE_PATH: /app/storage/${LOG_FILENAME}
+      AMQP_URI: amqp://${AMQP_USER}:${AMQP_PASS}@rabbitmq:5672/${AMQP_VHOST}
+    build: .
+    restart: unless-stopped
+    volumes:
+      - '${LOG_DIRNAME}:/app/storage'
+      - /app/node_modules
+    networks:
+      - api
+
+networks:
+  api:
+    name: api
+    external: true
