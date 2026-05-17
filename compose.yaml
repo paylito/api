@@ -10,6 +10,8 @@ services:
       - /app/node_modules
     networks:
       - api
+    ports:
+      - '127.0.0.1:3030:3000'
 
 networks:
   api:
