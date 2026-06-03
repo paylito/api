@@ -8,10 +8,11 @@ export interface IRates {
   TRX: number;
   USDC: number;
   SOL: number;
-  DAI: number;
   CELO: number;
   POL: number;
   USDT: number;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 const RatesSchema = new Schema<IRates>(
@@ -23,7 +24,6 @@ const RatesSchema = new Schema<IRates>(
     TRX: { type: Number, required: true },
     USDC: { type: Number, required: true },
     SOL: { type: Number, required: true },
-    DAI: { type: Number, required: true },
     CELO: { type: Number, required: true },
     POL: { type: Number, required: true },
     USDT: { type: Number, required: true },

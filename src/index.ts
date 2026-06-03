@@ -5,6 +5,7 @@ import './models';
 import { db } from './configs/db';
 import { envs } from './configs/envs';
 import { logger } from './configs/logger';
+import configRoutes from './routes/configRoutes';
 import orderRoutes from './routes/orderRoutes';
 
 const { PORT, DB_URI, DB_NAME } = envs();
@@ -23,6 +24,7 @@ const main = async () => {
   await db(DB_URI, DB_NAME);
 
   app.use('/orders', orderRoutes);
+  app.use('/config', configRoutes);
 
   app.get('/health', (_req: Request, res: Response) => {
     res.status(200).json({ status: 'OK', message: 'Server is running' });
