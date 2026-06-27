@@ -1,18 +1,42 @@
 import { Schema, model } from 'mongoose';
 
-interface IUser {
-  chatId: string;
-  destinationToken: string;
-  destinationNetwork: string;
-  destinationAddress: string;
+export interface IUserProfile {
+  preferredLanguage: string;
+  communicationStyle?: string;
+  humorTolerance: number;
+  interests: string[];
+  emotionalPatterns?: string;
+  preferences?: Record<string, string>;
 }
+
+export interface IUser {
+  name?: string;
+  chatId: string;
+  destinationToken?: string;
+  destinationNetwork?: string;
+  destinationAddress?: string;
+  profile: IUserProfile;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+const UserProfileSchema = new Schema<IUserProfile>({
+  preferredLanguage: { type: String, default: 'en' },
+  communicationStyle: { type: String },
+  humorTolerance: { type: Number, default: 0.7 },
+  interests: { type: [String], default: [] },
+  emotionalPatterns: { type: String },
+  preferences: { type: Schema.Types.Mixed },
+});
 
 const UserSchema = new Schema<IUser>(
   {
+    name: { type: String },
     chatId: { type: String, required: true, unique: true },
+    destinationToken: { type: String },
     destinationNetwork: { type: String },
     destinationAddress: { type: String },
-    destinationToken: { type: String },
+    profile: { type: UserProfileSchema, default: () => ({}) },
   },
   { timestamps: true },
 );

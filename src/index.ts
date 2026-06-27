@@ -5,6 +5,7 @@ import './models';
 import { db } from './configs/db';
 import { envs } from './configs/envs';
 import { logger } from './configs/logger';
+import configRoutes from './routes/configRoutes';
 import orderRoutes from './routes/orderRoutes';
 import donationRoutes from './routes/donationRoutes';
 
@@ -24,6 +25,7 @@ const main = async () => {
   await db(DB_URI, DB_NAME);
 
   app.use('/orders', orderRoutes);
+  app.use('/config', configRoutes);
   app.use('/donations', donationRoutes);
 
   app.get('/health', (_req: Request, res: Response) => {
@@ -46,7 +48,3 @@ const main = async () => {
 };
 
 main();
-
-/*
- * TODO:
- */

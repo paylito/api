@@ -23,7 +23,9 @@ const MAX_RATES_AGE_MS = 30_000;
 export const getOrderById = async (req: Request, res: Response) => {
   try {
     const order = await Order.findOne({ id: req.params.id })
-      .select('-privateKey -destinationToken -destinationNetwork -destinationAddress')
+      .select(
+        '-privateKey -destinationToken -destinationNetwork -destinationAddress -user -receiptChatId -receiptMessageId -paidAt -payment',
+      )
       .lean()
       .populate('rates');
 
@@ -34,20 +36,10 @@ export const getOrderById = async (req: Request, res: Response) => {
       });
     }
 
-    // TODO: when the Payment model is completed, only show this response when the Payment was made
-    // and confirmed longer than 10 minutes. If it is recent, still show the order details.
-
-    if (order.status === 'finished') {
+    if (order.status !== 'pending') {
       return res.status(200).json({
         success: true,
-        data: 'Order has finished.',
-      });
-    }
-
-    if (order.status === 'expired') {
-      return res.status(200).json({
-        success: true,
-        data: 'Order has expired',
+        data: `Order is ${order.status}`,
       });
     }
 
