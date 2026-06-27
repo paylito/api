@@ -1,10 +1,12 @@
 import cors from 'cors';
+import swaggerUi from 'swagger-ui-express';
 import express, { Express, Request, Response, NextFunction } from 'express';
 
 import './models';
 import { db } from './configs/db';
 import { envs } from './configs/envs';
 import { logger } from './configs/logger';
+import { openApiDocument } from './configs/swagger';
 import configRoutes from './routes/configRoutes';
 import orderRoutes from './routes/orderRoutes';
 import donationRoutes from './routes/donationRoutes';
@@ -27,6 +29,25 @@ const main = async () => {
   app.use('/orders', orderRoutes);
   app.use('/config', configRoutes);
   app.use('/donations', donationRoutes);
+
+  // API documentation: interactive Swagger UI at /swagger and the raw OpenAPI
+  // document at /swagger.json (for Postman/Insomnia imports and client codegen).
+  app.get('/swagger.json', (_req: Request, res: Response) => {
+    res.json(openApiDocument);
+  });
+  app.use(
+    '/swagger',
+    swaggerUi.serve,
+    swaggerUi.setup(openApiDocument, {
+      customSiteTitle: 'Payli API Docs',
+      swaggerOptions: { persistAuthorization: true },
+    }),
+  );
+
+  // Convenience: send the bare root to the docs.
+  app.get('/', (_req: Request, res: Response) => {
+    res.redirect('/swagger');
+  });
 
   app.get('/health', (_req: Request, res: Response) => {
     res.status(200).json({ status: 'OK', message: 'Server is running' });
