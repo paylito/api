@@ -1,5 +1,6 @@
 export const TOKENS = {
   USDC: {
+    isAllowed: true,
     symbol: 'USDC',
     name: 'USD Coin',
     decimals: 6,
@@ -14,6 +15,7 @@ export const TOKENS = {
     },
   },
   USDT: {
+    isAllowed: true,
     symbol: 'USDT',
     name: 'Tether USD',
     decimals: 6,
@@ -28,6 +30,7 @@ export const TOKENS = {
     },
   },
   ETH: {
+    isAllowed: true,
     symbol: 'ETH',
     name: 'Ethereum',
     decimals: 18,
@@ -35,6 +38,7 @@ export const TOKENS = {
     contractAddresses: {},
   },
   BNB: {
+    isAllowed: true,
     symbol: 'BNB',
     name: 'Binance Coin',
     decimals: 18,
@@ -42,6 +46,7 @@ export const TOKENS = {
     contractAddresses: {},
   },
   POL: {
+    isAllowed: true,
     symbol: 'POL',
     name: 'Polygon',
     decimals: 18,
@@ -49,6 +54,7 @@ export const TOKENS = {
     contractAddresses: {},
   },
   CELO: {
+    isAllowed: false,
     symbol: 'CELO',
     name: 'Celo',
     decimals: 18,
@@ -56,6 +62,7 @@ export const TOKENS = {
     contractAddresses: {},
   },
   SOL: {
+    isAllowed: false,
     symbol: 'SOL',
     name: 'Solana',
     decimals: 9,
@@ -63,6 +70,7 @@ export const TOKENS = {
     isNonEvm: true,
   },
   BTC: {
+    isAllowed: false,
     symbol: 'BTC',
     name: 'Bitcoin',
     decimals: 8,
@@ -70,6 +78,7 @@ export const TOKENS = {
     isNonEvm: true,
   },
   XLM: {
+    isAllowed: false,
     symbol: 'XLM',
     name: 'Stellar Lumens',
     decimals: 7,
@@ -77,6 +86,7 @@ export const TOKENS = {
     isNonEvm: true,
   },
   TRX: {
+    isAllowed: false,
     symbol: 'TRX',
     name: 'Tron',
     decimals: 6,
@@ -91,6 +101,7 @@ export const NETWORKS = {
     name: 'Ethereum',
     chainId: 1,
     type: 'evm',
+    isAllowed: true,
     rpcUrl: 'https://eth.llamarpc.com',
     blockExplorer: 'https://etherscan.io',
     nativeToken: TOKENS.ETH,
@@ -101,6 +112,7 @@ export const NETWORKS = {
     name: 'BNB Chain',
     chainId: 56,
     type: 'evm',
+    isAllowed: true,
     rpcUrl: 'https://bsc-dataseed.binance.org',
     blockExplorer: 'https://bscscan.com',
     nativeToken: TOKENS.BNB,
@@ -111,6 +123,7 @@ export const NETWORKS = {
     name: 'Polygon',
     chainId: 137,
     type: 'evm',
+    isAllowed: true,
     rpcUrl: 'https://polygon-rpc.com',
     blockExplorer: 'https://polygonscan.com',
     nativeToken: TOKENS.POL,
@@ -121,6 +134,7 @@ export const NETWORKS = {
     name: 'Base',
     chainId: 8453,
     type: 'evm',
+    isAllowed: true,
     rpcUrl: 'https://mainnet.base.org',
     blockExplorer: 'https://basescan.org',
     nativeToken: TOKENS.ETH,
@@ -131,6 +145,7 @@ export const NETWORKS = {
     name: 'Arbitrum',
     chainId: 42161,
     type: 'evm',
+    isAllowed: true,
     rpcUrl: 'https://arb1.arbitrum.io/rpc',
     blockExplorer: 'https://arbiscan.io',
     nativeToken: TOKENS.ETH,
@@ -141,6 +156,7 @@ export const NETWORKS = {
     name: 'Optimism',
     chainId: 10,
     type: 'evm',
+    isAllowed: true,
     rpcUrl: 'https://mainnet.optimism.io',
     blockExplorer: 'https://optimistic.etherscan.io',
     nativeToken: TOKENS.ETH,
@@ -151,6 +167,7 @@ export const NETWORKS = {
     name: 'Celo',
     chainId: 42220,
     type: 'evm',
+    isAllowed: false,
     rpcUrl: 'https://forno.celo.org',
     blockExplorer: 'https://celoscan.io',
     nativeToken: TOKENS.CELO,
@@ -160,6 +177,7 @@ export const NETWORKS = {
     id: 'solana',
     name: 'Solana',
     type: 'non-evm',
+    isAllowed: false,
     rpcUrl: 'https://api.mainnet-beta.solana.com',
     blockExplorer: 'https://explorer.solana.com',
     nativeToken: TOKENS.SOL,
@@ -169,6 +187,7 @@ export const NETWORKS = {
     id: 'bitcoin',
     name: 'Bitcoin',
     type: 'non-evm',
+    isAllowed: false,
     rpcUrl: 'https://blockstream.info/api',
     blockExplorer: 'https://blockstream.info',
     nativeToken: TOKENS.BTC,
@@ -178,6 +197,8 @@ export const NETWORKS = {
     id: 'stellar',
     name: 'Stellar',
     type: 'non-evm',
+
+    isAllowed: false,
     rpcUrl: 'https://horizon.stellar.org',
     blockExplorer: 'https://stellar.expert',
     nativeToken: TOKENS.XLM,
@@ -187,6 +208,7 @@ export const NETWORKS = {
     id: 'tron',
     name: 'Tron',
     type: 'non-evm',
+    isAllowed: false,
     rpcUrl: 'https://api.trongrid.io',
     blockExplorer: 'https://tronscan.org',
     nativeToken: TOKENS.TRX,

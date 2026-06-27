@@ -29,12 +29,21 @@
     "npm-run-all": "^4.1.5"
   },
   "dependencies": {
+    "@aa-sdk/core": "^4.88.3",
+    "@account-kit/infra": "^4.88.3",
+    "@account-kit/smart-contracts": "^4.88.3",
+    "@solana/web3.js": "^1.98.4",
+    "@stellar/stellar-sdk": "^15.1.0",
     "bignumber.js": "^9.1.2",
+    "bitcoinjs-lib": "^7.0.1",
     "bunyan": "^1.8.15",
     "cors": "^2.8.6",
     "envil": "^0.1.4",
+    "ethers": "^6.16.0",
     "express": "^5.2.1",
     "mongoose": "^7.8.2",
+    "tiny-secp256k1": "^2.2.4",
+    "tronweb": "^6.3.0",
     "typescript": "^5.9.3"
   }
 }

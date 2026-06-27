@@ -1,3 +1,5 @@
+import './User';
 import './Order';
 import './Rates';
-import './User';
+import './FeeConfig';
+import './DonationLink';
