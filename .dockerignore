@@ -1,0 +1,13 @@
+# Keep build context small and avoid copying host-built artifacts into the image
+# (deps are reinstalled with `npm ci`, dist is rebuilt with `npm run build`).
+node_modules
+dist
+.git
+.gitignore
+*.log
+storage
+npm-debug.log*
+
+# NOTE: .env is intentionally NOT ignored — the app reads its config from it at
+# runtime. If you move secrets into compose `environment:` / docker secrets,
+# add `.env` here too.

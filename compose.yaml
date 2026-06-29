@@ -1,12 +1,22 @@
 services:
   payli-api:
-    environment:
-      DB_URI: mongodb://mongo:27017
-      LOG_FILE_PATH: /app/storage/${LOG_FILENAME}
     build: .
+    # Bring the container back automatically if the process exits non-zero (a
+    # crash). `unless-stopped` keeps it down only when *you* stop it on purpose.
     restart: unless-stopped
+    # Run the app under a tiny init as PID 1 so SIGTERM from `docker stop` reaches
+    # node for a graceful shutdown, and any zombie child processes get reaped.
+    init: true
+    environment:
+      NODE_ENV: production
+      # Listen on 3000 inside the container (matches EXPOSE and the mapping below).
+      PORT: 3000
+      DB_URI: mongodb://mongo:27017
+      # Main log + a FATAL-only sibling (app.fatal.log) both land in /app/storage,
+      # which is bind-mounted out to the host through the volume below.
+      LOG_FILE_PATH: /app/storage/${LOG_FILENAME:-app.log}
     volumes:
-      - '${LOG_DIRNAME}:/app/storage'
+      - '${LOG_DIRNAME:-./storage}:/app/storage'
       - /app/node_modules
     networks:
       - api

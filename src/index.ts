@@ -10,6 +10,17 @@ import { openApiDocument } from './configs/swagger';
 import configRoutes from './routes/configRoutes';
 import orderRoutes from './routes/orderRoutes';
 import donationRoutes from './routes/donationRoutes';
+import {
+  fatalExit,
+  isExiting,
+  installCrashHandlers,
+  installShutdownHandlers,
+} from './configs/safety';
+
+// Arm the process-wide safety net before anything else runs, so a throw from an
+// async callback / timer / stream (which no try/catch can reach) is logged as
+// FATAL and triggers a clean docker restart instead of a silent crash.
+installCrashHandlers();
 
 const { PORT, DB_URI, DB_NAME } = envs();
 
@@ -57,15 +68,38 @@ const main = async () => {
     res.status(404).json({ message: 'Route not found' });
   });
 
+  // Express 5 forwards rejected async handlers here automatically, so this is the
+  // single catch-all for request-level errors. We log and respond 500 — a bad
+  // request must never take the whole server down.
   app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
-    logger.error(err.stack);
+    logger.error({ err }, 'Unhandled error in request pipeline');
+
+    // If the response already started streaming we can't set a new status —
+    // attempting to would itself throw. Just stop here.
+    if (res.headersSent) return;
 
     res.status(500).json({ message: 'Something went wrong!', error: err.message });
   });
 
-  app.listen(FINAL_PORT, () => {
-    logger.info(`Server is running on port ${PORT}`);
+  const server = app.listen(FINAL_PORT, () => {
+    logger.info(`Server is running on port ${FINAL_PORT}`);
   });
+
+  // A listen failure (e.g. EADDRINUSE) arrives as an 'error' event, not a throw;
+  // without this handler it would surface as an uncaughtException.
+  server.on('error', (err) => {
+    logger.fatal({ err }, 'HTTP server error — restarting process');
+    fatalExit(1);
+  });
+
+  installShutdownHandlers(server);
 };
 
-main();
+main().catch((err) => {
+  // db() and other startup failures already log FATAL + schedule the exit; only
+  // log here if something else slipped through, to avoid duplicate fatal records.
+  if (!isExiting()) {
+    logger.fatal({ err }, 'Fatal error during startup — restarting process');
+    fatalExit(1);
+  }
+});
