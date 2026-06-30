@@ -422,6 +422,123 @@ export const openApiDocument = {
         },
       },
     },
+
+    '/orders/{id}/receipt': {
+      post: {
+        tags: ['Orders'],
+        summary: 'Email a one-time receipt for a finished order',
+        description: [
+          'Sends a receipt for a **finished** order to an email address the payer',
+          'supplies (the gateway shows a "send the receipt to your email?" box once the',
+          'payment completes).',
+          '',
+          'This is a **one-time** action per order: the first valid request wins and any',
+          'later request for the same order is rejected with `409`. The email is sent',
+          '**out of band** — the endpoint responds `202` immediately and does not wait',
+          'for SMTP, so a slow or failing mail server never blocks the caller.',
+          '',
+          'Requires the server to have SMTP configured; when it is not, the endpoint',
+          'returns `503` and the rest of the API is unaffected.',
+        ].join('\n'),
+        operationId: 'requestOrderReceipt',
+        security: [],
+        parameters: [
+          {
+            name: 'id',
+            in: 'path',
+            required: true,
+            description: 'Public short order id, as returned by `POST /orders`.',
+            schema: { type: 'string', example: 'a1b2c3d4e5' },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/RequestReceiptRequest' },
+              example: { email: 'donor@example.com' },
+            },
+          },
+        },
+        responses: {
+          '202': {
+            description:
+              'Accepted. The receipt is being emailed; the response does not wait for the send.',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/RequestReceiptResponse' },
+                example: {
+                  success: true,
+                  message: 'Your receipt is on its way.',
+                  data: { email: 'donor@example.com' },
+                },
+              },
+            },
+          },
+          '400': {
+            description: 'The supplied email is missing or invalid.',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ErrorResponse' },
+                example: { success: false, message: 'A valid email is required' },
+              },
+            },
+          },
+          '404': {
+            description: 'No order exists for that id.',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ErrorResponse' },
+                example: { success: false, message: 'Order not found' },
+              },
+            },
+          },
+          '409': {
+            description: 'The order is not finished yet, or a receipt was already requested for it.',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ErrorResponse' },
+                examples: {
+                  notFinished: {
+                    summary: 'Order is not finished',
+                    value: { success: false, message: 'Order is not finished yet' },
+                  },
+                  alreadyRequested: {
+                    summary: 'Receipt already requested (one-time)',
+                    value: {
+                      success: false,
+                      message: 'A receipt has already been requested for this order',
+                    },
+                  },
+                },
+              },
+            },
+          },
+          '503': {
+            description: 'Email is not configured on the server; receipts are unavailable.',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ErrorResponse' },
+                example: { success: false, message: 'Email receipts are not available right now' },
+              },
+            },
+          },
+          '500': {
+            description: 'Unexpected error while requesting the receipt.',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ErrorResponse' },
+                example: {
+                  success: false,
+                  message: 'Failed to request receipt',
+                  error: 'Unknown error',
+                },
+              },
+            },
+          },
+        },
+      },
+    },
     '/admin/login': {
       post: {
         tags: ['Admin'],
@@ -1079,6 +1196,37 @@ export const openApiDocument = {
                 description: 'Hosted payment-gateway URL the donor should be redirected to.',
                 example: 'https://pay.payli.to/a1b2c3d4e5',
               },
+            },
+          },
+        },
+      },
+
+      // ----- Receipts ----------------------------------------------------------
+      RequestReceiptRequest: {
+        type: 'object',
+        required: ['email'],
+        properties: {
+          email: {
+            type: 'string',
+            format: 'email',
+            maxLength: 254,
+            description: 'Address the receipt is emailed to. Trimmed and lowercased server-side.',
+            example: 'donor@example.com',
+          },
+        },
+      },
+
+      RequestReceiptResponse: {
+        type: 'object',
+        required: ['success', 'data'],
+        properties: {
+          success: { type: 'boolean', enum: [true], example: true },
+          message: { type: 'string', example: 'Your receipt is on its way.' },
+          data: {
+            type: 'object',
+            required: ['email'],
+            properties: {
+              email: { type: 'string', format: 'email', example: 'donor@example.com' },
             },
           },
         },

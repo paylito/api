@@ -5,4 +5,5 @@ import './FeeConfig';
 import './DonationLink';
 import './Conversation';
 import './Payment';
+import './Receipt';
 import './LifiTransaction';
