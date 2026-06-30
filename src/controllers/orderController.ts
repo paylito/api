@@ -24,10 +24,13 @@ export const getOrderById = async (req: Request, res: Response) => {
   try {
     const order = await Order.findOne({ id: req.params.id })
       .select(
-        '-privateKey -destinationToken -destinationNetwork -destinationAddress -user -receiptChatId -receiptMessageId -paidAt -payment',
+        '-privateKey -destinationToken -destinationNetwork -destinationAddress -receiptChatId -receiptMessageId -paidAt -payment -text -donation',
       )
       .lean()
-      .populate('rates');
+      .populate('rates')
+      // Expose only non-sensitive fields about the order's owner to the gateway;
+      // never the chatId, payout destination, or profile.
+      .populate({ path: 'user', select: 'name username -_id' });
 
     if (!order) {
       return res.status(404).json({

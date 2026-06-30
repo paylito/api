@@ -42,8 +42,10 @@ export const openApiDocument = {
       '- Resource endpoints wrap their payload as `{ "success": boolean, ... }`.',
       '  On success the body carries a `data` field; on failure a `message` (and, for',
       '  unexpected `500`s, an `error` string).',
-      '- There is **no authentication** on these endpoints — they are public read /',
-      '  create operations for the donation flow.',
+      '- The donation-flow endpoints (Config, Donations, Orders) have **no',
+      '  authentication** — they are public read / create operations.',
+      '- The **Admin** endpoints are different: `POST /admin/login` is public, but every',
+      '  other `/admin/*` route requires a Bearer JWT obtained from it.',
       '- Unknown routes return `404 { "message": "Route not found" }` and any uncaught',
       '  server error returns `500 { "message": "Something went wrong!", "error": "..." }`.',
     ].join('\n'),
@@ -63,6 +65,15 @@ export const openApiDocument = {
     { name: 'Config', description: 'Supported blockchain networks and tokens.' },
     { name: 'Donations', description: 'Public donation links.' },
     { name: 'Orders', description: 'Donation orders and their multi-chain payment pricing.' },
+    {
+      name: 'Admin',
+      description: [
+        'Internal owner/admin dashboard. `POST /admin/login` exchanges two shared',
+        'secrets for a JWT; every other `/admin/*` endpoint requires that token as',
+        '`Authorization: Bearer <jwt>`. When the panel is unconfigured (secrets unset)',
+        'these endpoints return `503`.',
+      ].join('\n'),
+    },
   ],
 
   paths: {
@@ -411,9 +422,368 @@ export const openApiDocument = {
         },
       },
     },
+    '/admin/login': {
+      post: {
+        tags: ['Admin'],
+        summary: 'Admin login',
+        description: [
+          'Exchanges the two shared admin secrets (`id` + `secret`) for a short-lived',
+          'JWT. Send the returned `token` as `Authorization: Bearer <token>` on every',
+          'other `/admin/*` request.',
+        ].join('\n'),
+        operationId: 'adminLogin',
+        security: [],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/AdminLoginRequest' },
+              example: { id: 'your-admin-id', secret: 'your-admin-secret' },
+            },
+          },
+        },
+        responses: {
+          '200': {
+            description: 'Authenticated. `data.token` is the Bearer JWT.',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/AdminLoginResponse' },
+                example: {
+                  success: true,
+                  data: {
+                    token: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhZG1pbiJ9.sig',
+                    tokenType: 'Bearer',
+                    expiresIn: 43200,
+                    expiresAt: '2026-06-30T12:00:00.000Z',
+                  },
+                },
+              },
+            },
+          },
+          '400': {
+            description: '`id` or `secret` missing from the body.',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ErrorResponse' },
+                example: { success: false, message: 'id and secret are required' },
+              },
+            },
+          },
+          '401': {
+            description: 'Credentials did not match.',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ErrorResponse' },
+                example: { success: false, message: 'Invalid credentials' },
+              },
+            },
+          },
+          '503': {
+            description: 'Admin panel is not configured (secrets unset on the server).',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ErrorResponse' },
+                example: { success: false, message: 'Admin panel is not configured' },
+              },
+            },
+          },
+        },
+      },
+    },
+
+    '/admin/me': {
+      get: {
+        tags: ['Admin'],
+        summary: 'Verify the current admin token',
+        description: 'Returns the decoded token claims so the panel can confirm it is still signed in.',
+        operationId: 'adminMe',
+        security: [{ bearerAuth: [] }],
+        responses: {
+          '200': {
+            description: 'Token is valid.',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/AdminMeResponse' },
+                example: {
+                  success: true,
+                  data: {
+                    authenticated: true,
+                    sub: 'admin',
+                    issuedAt: '2026-06-30T00:00:00.000Z',
+                    expiresAt: '2026-06-30T12:00:00.000Z',
+                  },
+                },
+              },
+            },
+          },
+          '401': {
+            description: 'Missing, invalid, or expired token.',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ErrorResponse' },
+                example: { success: false, message: 'Invalid or expired token' },
+              },
+            },
+          },
+        },
+      },
+    },
+
+    '/admin/overview': {
+      get: {
+        tags: ['Admin'],
+        summary: 'Dashboard overview KPIs',
+        description: [
+          'Aggregate stats for the overview page: settled volume, revenue (service',
+          'fees), pending payouts, daily payments, average transaction value, success',
+          'rate, merchant counts, the payment-method (asset) split, and the top 5',
+          'merchants by settled volume.',
+          '',
+          'All money values are USD numbers. Counts and money sums are computed over',
+          '**finished** (successfully settled) orders unless noted otherwise.',
+        ].join('\n'),
+        operationId: 'adminOverview',
+        security: [{ bearerAuth: [] }],
+        responses: {
+          '200': {
+            description: 'The overview aggregate.',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/AdminOverviewResponse' },
+              },
+            },
+          },
+          '401': {
+            description: 'Missing, invalid, or expired token.',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ErrorResponse' },
+                example: { success: false, message: 'Invalid or expired token' },
+              },
+            },
+          },
+          '500': {
+            description: 'Unexpected error while building the overview.',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ErrorResponse' },
+              },
+            },
+          },
+        },
+      },
+    },
+
+    '/admin/payments': {
+      get: {
+        tags: ['Admin'],
+        summary: 'List payments (orders)',
+        description: [
+          'Paginated, filterable list of every payment (order). Filters are optional and',
+          'AND-combined. `asset` and `network` match the asset actually paid (from the',
+          'linked settlement) and therefore only ever match settled payments. Per the',
+          'design, `asset`, `network`, `crypto`, and `payoutTx` are returned as `null`',
+          'for non-completed payments.',
+          '',
+          '`merchantId` is matched as an exact User id when it is a valid Mongo ObjectId,',
+          'otherwise as a case-insensitive username substring.',
+        ].join('\n'),
+        operationId: 'adminListPayments',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { $ref: '#/components/parameters/PageParam' },
+          { $ref: '#/components/parameters/LimitParam' },
+          {
+            name: 'asset',
+            in: 'query',
+            required: false,
+            description: 'Filter by paid asset symbol (e.g. `USDT`). `any` / omitted = no filter.',
+            schema: {
+              type: 'string',
+              enum: ['any', 'USDT', 'USDC', 'ETH', 'BTC', 'BNB', 'SOL'],
+              default: 'any',
+            },
+          },
+          {
+            name: 'network',
+            in: 'query',
+            required: false,
+            description: 'Filter by settlement network. `any` / omitted = no filter.',
+            schema: {
+              type: 'string',
+              enum: ['any', 'Ethereum', 'Arbitrum', 'Optimism', 'Polygon', 'BSC', 'Tron', 'Bitcoin', 'Solana'],
+              default: 'any',
+            },
+          },
+          {
+            name: 'date',
+            in: 'query',
+            required: false,
+            description: 'Exact calendar day (UTC) the payment was created, `YYYY-MM-DD`.',
+            schema: { type: 'string', format: 'date', example: '2026-06-18' },
+          },
+          {
+            name: 'status',
+            in: 'query',
+            required: false,
+            description:
+              'Dashboard status. `completed`→finished, `pending`→pending/processing/manual_review, `failed`→failed/expired. A raw order status is also accepted.',
+            schema: {
+              type: 'string',
+              enum: ['any', 'completed', 'pending', 'failed'],
+              default: 'any',
+            },
+          },
+          {
+            name: 'merchantId',
+            in: 'query',
+            required: false,
+            description: 'User id (exact) or username substring (case-insensitive).',
+            schema: { type: 'string', example: '665f1b2c3d4e5f6a7b8c9d0e' },
+          },
+        ],
+        responses: {
+          '200': {
+            description: 'A page of payments.',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/AdminPaymentsResponse' },
+              },
+            },
+          },
+          '401': {
+            description: 'Missing, invalid, or expired token.',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ErrorResponse' },
+                example: { success: false, message: 'Invalid or expired token' },
+              },
+            },
+          },
+          '500': {
+            description: 'Unexpected error while fetching payments.',
+            content: {
+              'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } },
+            },
+          },
+        },
+      },
+    },
+
+    '/admin/merchants': {
+      get: {
+        tags: ['Admin'],
+        summary: 'List merchants (users)',
+        description: [
+          'Paginated list of merchants. `payments` counts settled orders, `paidOut` is',
+          'the total settled to them (USD), and `revenue` is the service-fee revenue they',
+          'generated. Sorted by `paidOut` descending. No filters.',
+        ].join('\n'),
+        operationId: 'adminListMerchants',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { $ref: '#/components/parameters/PageParam' },
+          { $ref: '#/components/parameters/LimitParam' },
+        ],
+        responses: {
+          '200': {
+            description: 'A page of merchants.',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/AdminMerchantsResponse' },
+              },
+            },
+          },
+          '401': {
+            description: 'Missing, invalid, or expired token.',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ErrorResponse' },
+                example: { success: false, message: 'Invalid or expired token' },
+              },
+            },
+          },
+          '500': {
+            description: 'Unexpected error while fetching merchants.',
+            content: {
+              'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } },
+            },
+          },
+        },
+      },
+    },
+
+    '/admin/donatees': {
+      get: {
+        tags: ['Admin'],
+        summary: 'List donatees (donation links)',
+        description: [
+          'Paginated list of donatees. `donations` counts settled donation orders made',
+          'through the link, `raised` is their total (USD), and `telegram` is the owning',
+          "user's handle. Sorted by `raised` descending. No filters.",
+        ].join('\n'),
+        operationId: 'adminListDonatees',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { $ref: '#/components/parameters/PageParam' },
+          { $ref: '#/components/parameters/LimitParam' },
+        ],
+        responses: {
+          '200': {
+            description: 'A page of donatees.',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/AdminDonateesResponse' },
+              },
+            },
+          },
+          '401': {
+            description: 'Missing, invalid, or expired token.',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ErrorResponse' },
+                example: { success: false, message: 'Invalid or expired token' },
+              },
+            },
+          },
+          '500': {
+            description: 'Unexpected error while fetching donatees.',
+            content: {
+              'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } },
+            },
+          },
+        },
+      },
+    },
   },
 
   components: {
+    securitySchemes: {
+      bearerAuth: {
+        type: 'http',
+        scheme: 'bearer',
+        bearerFormat: 'JWT',
+        description: 'JWT issued by `POST /admin/login`. Send as `Authorization: Bearer <token>`.',
+      },
+    },
+
+    parameters: {
+      PageParam: {
+        name: 'page',
+        in: 'query',
+        required: false,
+        description: '1-based page number.',
+        schema: { type: 'integer', minimum: 1, default: 1 },
+      },
+      LimitParam: {
+        name: 'limit',
+        in: 'query',
+        required: false,
+        description: 'Items per page (max 100).',
+        schema: { type: 'integer', minimum: 1, maximum: 100, default: 10 },
+      },
+    },
+
     schemas: {
       // ----- Generic envelopes -------------------------------------------------
       ErrorResponse: {
@@ -711,6 +1081,204 @@ export const openApiDocument = {
               },
             },
           },
+        },
+      },
+
+      // ----- Admin: shared -----------------------------------------------------
+      PaginationMeta: {
+        type: 'object',
+        description: 'Pagination envelope returned alongside every admin list.',
+        required: ['page', 'limit', 'total', 'totalPages', 'hasPrev', 'hasNext', 'from', 'to'],
+        properties: {
+          page: { type: 'integer', description: '1-based current page.', example: 1 },
+          limit: { type: 'integer', description: 'Items per page.', example: 10 },
+          total: { type: 'integer', description: 'Total matching items.', example: 24 },
+          totalPages: { type: 'integer', example: 3 },
+          hasPrev: { type: 'boolean', example: false },
+          hasNext: { type: 'boolean', example: true },
+          from: { type: 'integer', description: '1-based index of the first item on this page (0 if empty).', example: 1 },
+          to: { type: 'integer', description: '1-based index of the last item on this page.', example: 10 },
+        },
+      },
+
+      // ----- Admin: auth -------------------------------------------------------
+      AdminLoginRequest: {
+        type: 'object',
+        required: ['id', 'secret'],
+        properties: {
+          id: { type: 'string', description: 'First shared admin secret.', example: 'your-admin-id' },
+          secret: { type: 'string', description: 'Second shared admin secret.', example: 'your-admin-secret' },
+        },
+      },
+
+      AdminLoginResponse: {
+        type: 'object',
+        required: ['success', 'data'],
+        properties: {
+          success: { type: 'boolean', enum: [true], example: true },
+          data: {
+            type: 'object',
+            required: ['token', 'tokenType', 'expiresIn', 'expiresAt'],
+            properties: {
+              token: { type: 'string', description: 'JWT to send as `Authorization: Bearer <token>`.' },
+              tokenType: { type: 'string', enum: ['Bearer'], example: 'Bearer' },
+              expiresIn: { type: 'integer', description: 'Token lifetime in seconds.', example: 43200 },
+              expiresAt: { type: 'string', format: 'date-time', example: '2026-06-30T12:00:00.000Z' },
+            },
+          },
+        },
+      },
+
+      AdminMeResponse: {
+        type: 'object',
+        required: ['success', 'data'],
+        properties: {
+          success: { type: 'boolean', enum: [true], example: true },
+          data: {
+            type: 'object',
+            properties: {
+              authenticated: { type: 'boolean', example: true },
+              sub: { type: 'string', example: 'admin' },
+              issuedAt: { type: 'string', format: 'date-time', nullable: true },
+              expiresAt: { type: 'string', format: 'date-time', nullable: true },
+            },
+          },
+        },
+      },
+
+      // ----- Admin: overview ---------------------------------------------------
+      AdminPaymentMethod: {
+        type: 'object',
+        description: 'Settled volume attributed to one asset.',
+        properties: {
+          asset: { type: 'string', example: 'USDT' },
+          amount: { type: 'number', description: 'Settled USD volume in this asset.', example: 27900000 },
+          count: { type: 'integer', description: 'Number of settled payments in this asset.', example: 1840 },
+          pct: { type: 'number', description: 'Share of total settled volume (%).', example: 58 },
+        },
+      },
+
+      AdminTopMerchant: {
+        type: 'object',
+        properties: {
+          merchantId: { type: 'string', nullable: true, example: '665f1b2c3d4e5f6a7b8c9d0e' },
+          name: { type: 'string', nullable: true, example: 'Amir Rezaei' },
+          handle: { type: 'string', nullable: true, example: '@heyamir' },
+          payments: { type: 'integer', example: 1480 },
+          paidOut: { type: 'number', description: 'Total settled to the merchant (USD).', example: 4700000 },
+        },
+      },
+
+      AdminOverview: {
+        type: 'object',
+        properties: {
+          totalVolume: { type: 'number', description: 'Total settled volume (USD).', example: 48200000 },
+          revenue: { type: 'number', description: 'Service-fee revenue (USD).', example: 612400 },
+          pendingPayouts: {
+            type: 'object',
+            properties: {
+              amount: { type: 'number', description: 'USD owed but not yet forwarded.', example: 284900 },
+              queued: { type: 'integer', description: 'Orders awaiting settlement.', example: 142 },
+            },
+          },
+          dailyPayments: { type: 'integer', description: 'Settled payments since 00:00 UTC today.', example: 3847 },
+          avgTransactionValue: { type: 'number', description: 'Mean settled order value (USD).', example: 1284 },
+          successRate: { type: 'number', description: 'finished / (finished + failed + expired), as %.', example: 98.2 },
+          totalMerchants: { type: 'integer', example: 12604 },
+          newSignupsToday: { type: 'integer', example: 218 },
+          paymentMethods: { type: 'array', items: { $ref: '#/components/schemas/AdminPaymentMethod' } },
+          topMerchants: { type: 'array', items: { $ref: '#/components/schemas/AdminTopMerchant' } },
+          recentPayments: {
+            type: 'array',
+            description: 'The 7 most recent payments, same shape as the payments list.',
+            items: { $ref: '#/components/schemas/AdminPayment' },
+          },
+        },
+      },
+
+      AdminOverviewResponse: {
+        type: 'object',
+        required: ['success', 'data'],
+        properties: {
+          success: { type: 'boolean', enum: [true], example: true },
+          data: { $ref: '#/components/schemas/AdminOverview' },
+        },
+      },
+
+      // ----- Admin: payments ---------------------------------------------------
+      AdminPayment: {
+        type: 'object',
+        description:
+          'A payment (order). `asset`, `network`, `crypto`, and `payoutTx` are `null` unless `status` is `completed`.',
+        properties: {
+          id: { type: 'string', description: 'Public short order id.', example: 'a1b2c3d4e5' },
+          merchantHandle: { type: 'string', nullable: true, example: '@heyamir' },
+          merchantId: { type: 'string', nullable: true, description: 'Owning User id.', example: '665f1b2c3d4e5f6a7b8c9d0e' },
+          asset: { type: 'string', nullable: true, example: 'USDT' },
+          network: { type: 'string', nullable: true, example: 'ethereum' },
+          status: { type: 'string', enum: ['completed', 'pending', 'failed'], example: 'completed' },
+          orderStatus: { $ref: '#/components/schemas/OrderStatus' },
+          dateISO: { type: 'string', format: 'date', example: '2026-06-18' },
+          date: { type: 'string', description: 'Display date.', example: 'jun 18, 2026' },
+          usd: { type: 'string', description: 'Display USD amount.', example: '$307.00' },
+          amountUsd: { type: 'number', description: 'Raw USD amount.', example: 307 },
+          crypto: { type: 'string', nullable: true, description: 'Amount paid in the asset.', example: '307 USDT' },
+          payoutTx: { type: 'string', nullable: true, description: 'li.fi settlement tx hash.', example: '0x0001…8625' },
+        },
+      },
+
+      AdminPaymentsResponse: {
+        type: 'object',
+        required: ['success', 'data', 'pagination'],
+        properties: {
+          success: { type: 'boolean', enum: [true], example: true },
+          data: { type: 'array', items: { $ref: '#/components/schemas/AdminPayment' } },
+          pagination: { $ref: '#/components/schemas/PaginationMeta' },
+        },
+      },
+
+      // ----- Admin: merchants --------------------------------------------------
+      AdminMerchant: {
+        type: 'object',
+        properties: {
+          name: { type: 'string', nullable: true, example: 'Amir Rezaei' },
+          id: { type: 'string', description: 'User id.', example: '665f1b2c3d4e5f6a7b8c9d0e' },
+          username: { type: 'string', nullable: true, example: '@heyamir' },
+          donationUsername: { type: 'string', nullable: true, example: '@amir-builds' },
+          payments: { type: 'integer', description: 'Settled payment count.', example: 1480 },
+          paidOut: { type: 'number', description: 'Total settled to the merchant (USD).', example: 4700000 },
+          revenue: { type: 'number', description: 'Service-fee revenue generated (USD).', example: 55900 },
+        },
+      },
+
+      AdminMerchantsResponse: {
+        type: 'object',
+        required: ['success', 'data', 'pagination'],
+        properties: {
+          success: { type: 'boolean', enum: [true], example: true },
+          data: { type: 'array', items: { $ref: '#/components/schemas/AdminMerchant' } },
+          pagination: { $ref: '#/components/schemas/PaginationMeta' },
+        },
+      },
+
+      // ----- Admin: donatees ---------------------------------------------------
+      AdminDonatee: {
+        type: 'object',
+        properties: {
+          donationUsername: { type: 'string', nullable: true, example: '@amir-builds' },
+          donations: { type: 'integer', description: 'Settled donation count.', example: 412 },
+          raised: { type: 'number', description: 'Total raised (USD).', example: 23900 },
+          telegram: { type: 'string', nullable: true, description: "Owner's telegram handle.", example: '@amir_builds' },
+        },
+      },
+
+      AdminDonateesResponse: {
+        type: 'object',
+        required: ['success', 'data', 'pagination'],
+        properties: {
+          success: { type: 'boolean', enum: [true], example: true },
+          data: { type: 'array', items: { $ref: '#/components/schemas/AdminDonatee' } },
+          pagination: { $ref: '#/components/schemas/PaginationMeta' },
         },
       },
     },
