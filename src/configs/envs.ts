@@ -7,7 +7,6 @@ export const envs = () => {
     'NODE_ENV',
     'PORT',
     'PAYMENT_GATEWAY_URI',
-    'SERVICE_FEE',
     'ALCHEMY_API_KEY',
   ];
 

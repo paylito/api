@@ -2,7 +2,6 @@ import { BigNumber } from 'bignumber.js';
 
 import { NETWORKS } from './tokens';
 import { randomBytes } from 'crypto';
-import { envs } from '../configs/envs';
 import { logger } from '../configs/logger';
 import { FeeConfig } from '../models/FeeConfig';
 import { IRates, Rates } from '../models/Rates';
@@ -24,16 +23,30 @@ export const getLatestRates = async (): Promise<IRates | null> => {
   }
 };
 
-export const getServiceFee = () => {
-  const { SERVICE_FEE } = envs();
+const DEFAULT_SERVICE_FEE_PERCENTAGE = 3;
+const DEFAULT_SERVICE_FEE_MAX = 6;
 
-  return new BigNumber(SERVICE_FEE);
+// Platform service fee: SERVICE_FEE_PERCENTAGE percent of the order amount,
+// capped at SERVICE_FEE_MAX dollars. Both are optional (read from process.env
+// like the other optional config) and default to 3% / $6 — so the cap is reached
+// at $200, e.g. $80 -> $2.40, $500 -> $6.00.
+export const getServiceFeeConfig = () => ({
+  percentage: new BigNumber(process.env.SERVICE_FEE_PERCENTAGE || DEFAULT_SERVICE_FEE_PERCENTAGE),
+  cap: new BigNumber(process.env.SERVICE_FEE_MAX || DEFAULT_SERVICE_FEE_MAX),
+});
+
+export const getServiceFee = (amountUsd: string | number) => {
+  const { percentage, cap } = getServiceFeeConfig();
+
+  const fee = new BigNumber(amountUsd).times(percentage).div(100);
+
+  return BigNumber.minimum(fee, cap);
 };
 
 export const getPricing = async (order: IOrder, rates: IRates) => {
   const feeConfigsArr = await FeeConfig.find();
 
-  const serviceFeeUsd = getServiceFee();
+  const serviceFeeUsd = getServiceFee(order.amount);
 
   const pricing = feeConfigsArr
     .map((cfg) => {
@@ -50,23 +63,36 @@ export const getPricing = async (order: IOrder, rates: IRates) => {
           throw new Error(`Missing rate for ${token.symbol}`);
         }
 
+        // Convert each USD figure to the token, rounding UP to the token's
+        // acceptable precision (3 dp for stablecoins, 4 otherwise). Rounding up
+        // keeps the payer at/above the true cost; the total is the sum of the
+        // rounded parts, so the displayed breakdown adds up exactly to the amount
+        // the gateway charges and the listener verifies.
+        const dp = token.acceptableDecimals;
+        const price = new BigNumber(priceUsd);
+
+        const amount = new BigNumber(order.amount).div(price).decimalPlaces(dp, BigNumber.ROUND_UP);
+        const serviceFee = serviceFeeUsd.div(price).decimalPlaces(dp, BigNumber.ROUND_UP);
+        const networkFee = networkFeeUsd.div(price).decimalPlaces(dp, BigNumber.ROUND_UP);
+        const total = amount.plus(serviceFee).plus(networkFee);
+
         const totalUsd = new BigNumber(order.amount).plus(serviceFeeUsd).plus(networkFeeUsd);
 
         return {
           symbol: token.symbol,
-          priceUsd: new BigNumber(priceUsd).toString(),
+          priceUsd: price.toString(),
 
           amountUsd: new BigNumber(order.amount).toString(),
-          amount: new BigNumber(order.amount).div(priceUsd).toString(),
+          amount: amount.toString(),
 
           serviceFeeUsd: serviceFeeUsd.toString(),
-          serviceFee: serviceFeeUsd.div(priceUsd).toString(),
+          serviceFee: serviceFee.toString(),
 
           networkFeeUsd: networkFeeUsd.toString(),
-          networkFee: networkFeeUsd.div(priceUsd).toString(),
+          networkFee: networkFee.toString(),
 
           totalUsd: totalUsd.toString(),
-          total: totalUsd.div(priceUsd).toString(),
+          total: total.toString(),
         };
       });
 

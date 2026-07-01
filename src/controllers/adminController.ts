@@ -4,7 +4,7 @@ import { Types, isValidObjectId, PipelineStage } from 'mongoose';
 import { User } from '../models/User';
 import { Order } from '../models/Order';
 import { logger } from '../configs/logger';
-import { getServiceFee } from '../utils/helpers';
+import { getServiceFeeConfig } from '../utils/helpers';
 import { DonationLink } from '../models/DonationLink';
 import { signJwt, safeEqual } from '../utils/jwt';
 import { getAdminConfig, isAdminConfigured } from '../configs/admin';
@@ -128,6 +128,7 @@ interface MerchantAggRow {
   donationUsername?: string;
   payments: number;
   paidOut: number;
+  revenue: number;
 }
 
 interface DonateeAggRow {
@@ -251,7 +252,9 @@ export const adminMe = (req: Request, res: Response) => {
 // GET /admin/overview — the aggregate KPIs + breakdowns for the landing page.
 export const getOverview = async (_req: Request, res: Response) => {
   try {
-    const serviceFee = getServiceFee().toNumber();
+    const { percentage, cap } = getServiceFeeConfig();
+    const serviceFeePct = percentage.div(100).toNumber();
+    const serviceFeeCap = cap.toNumber();
 
     const now = new Date();
     const todayStart = new Date(
@@ -272,7 +275,16 @@ export const getOverview = async (_req: Request, res: Response) => {
       // Settled volume + count of successful payments.
       Order.aggregate([
         { $match: { status: FINISHED } },
-        { $group: { _id: null, volume: { $sum: { $toDouble: '$amount' } }, count: { $sum: 1 } } },
+        {
+          $group: {
+            _id: null,
+            volume: { $sum: { $toDouble: '$amount' } },
+            count: { $sum: 1 },
+            revenue: {
+              $sum: { $min: [{ $multiply: [{ $toDouble: '$amount' }, serviceFeePct] }, serviceFeeCap] },
+            },
+          },
+        },
       ]),
       // Money we owe merchants but haven't forwarded yet (payment detected,
       // settlement in flight or under review).
@@ -325,6 +337,7 @@ export const getOverview = async (_req: Request, res: Response) => {
 
     const volume = totals[0]?.volume ?? 0;
     const finishedCount = totals[0]?.count ?? 0;
+    const revenue = totals[0]?.revenue ?? 0;
 
     const statusMap: Record<string, number> = {};
     for (const row of statusCounts) statusMap[row._id] = row.count;
@@ -338,7 +351,7 @@ export const getOverview = async (_req: Request, res: Response) => {
       success: true,
       data: {
         totalVolume: volume,
-        revenue: Number((finishedCount * serviceFee).toFixed(2)),
+        revenue: Number(revenue.toFixed(2)),
         pendingPayouts: {
           amount: pending[0]?.amount ?? 0,
           queued: pending[0]?.count ?? 0,
@@ -489,7 +502,9 @@ export const getPayments = async (req: Request, res: Response) => {
 export const getMerchants = async (req: Request, res: Response) => {
   try {
     const pagination = parsePagination(req);
-    const serviceFee = getServiceFee().toNumber();
+    const { percentage, cap } = getServiceFeeConfig();
+    const serviceFeePct = percentage.div(100).toNumber();
+    const serviceFeeCap = cap.toNumber();
 
     const agg = await User.aggregate([
       {
@@ -507,6 +522,9 @@ export const getMerchants = async (req: Request, res: Response) => {
                 _id: null,
                 paidOut: { $sum: { $toDouble: '$amount' } },
                 payments: { $sum: 1 },
+                revenue: {
+                  $sum: { $min: [{ $multiply: [{ $toDouble: '$amount' }, serviceFeePct] }, serviceFeeCap] },
+                },
               },
             },
           ],
@@ -530,6 +548,7 @@ export const getMerchants = async (req: Request, res: Response) => {
         $addFields: {
           payments: { $ifNull: [{ $arrayElemAt: ['$stats.payments', 0] }, 0] },
           paidOut: { $ifNull: [{ $arrayElemAt: ['$stats.paidOut', 0] }, 0] },
+          revenue: { $ifNull: [{ $arrayElemAt: ['$stats.revenue', 0] }, 0] },
           donationUsername: { $arrayElemAt: ['$dl.username', 0] },
         },
       },
@@ -552,7 +571,7 @@ export const getMerchants = async (req: Request, res: Response) => {
       donationUsername: handle(u.donationUsername),
       payments: u.payments,
       paidOut: u.paidOut,
-      revenue: Number((u.payments * serviceFee).toFixed(2)),
+      revenue: Number((u.revenue ?? 0).toFixed(2)),
     }));
 
     return res.status(200).json({
