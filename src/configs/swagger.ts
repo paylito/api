@@ -316,6 +316,10 @@ export const openApiDocument = {
           'metadata, linked payment) are stripped from the response. The `rates`',
           'snapshot the order was priced against is populated inline.',
           '',
+          '`user` only ever carries a public display identity. For orders created from',
+          'a donation link (`isDonation: true`), that is the donation link\'s public',
+          'handle — the owner\'s telegram name/username is never exposed to donors.',
+          '',
           '**Note on the response shape:** while the order is `pending`, `data` is the',
           'full order object. Once it has moved to any other status, `data` is instead a',
           'human-readable string such as `"Order is finished"` — pricing/addresses are',
@@ -358,8 +362,8 @@ export const openApiDocument = {
                         expiresAt: '2026-06-27T12:20:00.000Z',
                         createdAt: '2026-06-27T12:00:00.000Z',
                         updatedAt: '2026-06-27T12:00:00.000Z',
-                        text: 'Thanks for the great work!',
-                        donation: '665f1b2c3d4e5f6a7b8c9d0f',
+                        isDonation: true,
+                        user: { username: 'cool-creator' },
                         rates: {
                           BTC: 64000, ETH: 3500, BNB: 600, XLM: 0.11, TRX: 0.12,
                           USDC: 1, SOL: 150, CELO: 0.7, POL: 0.55, USDT: 1,
@@ -939,13 +943,13 @@ export const openApiDocument = {
           'ERC-20 contract addresses per EVM network. Empty (`{}`) for native assets. Keys are network identifiers.',
         additionalProperties: { type: 'string' },
         properties: {
-          mainnet: { type: 'string', example: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48' },
+          ethereum: { type: 'string', example: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48' },
           bsc: { type: 'string', example: '0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d' },
-          polygon: { type: 'string', example: '0x3c499959c92e8d5b2b6d8b6e9d8b6e9d8b6e9d8b' },
+          polygon: { type: 'string', example: '0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359' },
           base: { type: 'string', example: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' },
           arbitrum: { type: 'string', example: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831' },
           optimism: { type: 'string', example: '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85' },
-          celoMainnet: { type: 'string', example: '0xcebA9300f2b948710d2653dD7B07f33A8B32118C' },
+          celo: { type: 'string', example: '0xcebA9300f2b948710d2653dD7B07f33A8B32118C' },
         },
       },
 
@@ -957,6 +961,14 @@ export const openApiDocument = {
           symbol: { type: 'string', example: 'USDC' },
           name: { type: 'string', example: 'USD Coin' },
           decimals: { type: 'integer', example: 6 },
+          decimalsByNetwork: {
+            type: 'object',
+            nullable: true,
+            description:
+              'Per-network decimal overrides for chains whose deployment differs from `decimals` (e.g. USDC/USDT are 18-decimal BEP20s on BSC).',
+            additionalProperties: { type: 'integer' },
+            example: { bsc: 18 },
+          },
           isAllowed: {
             type: 'boolean',
             description: 'Whether the asset is currently accepted.',
@@ -991,7 +1003,7 @@ export const openApiDocument = {
           },
           type: { type: 'string', enum: ['evm', 'non-evm'], example: 'evm' },
           isAllowed: { type: 'boolean', example: true },
-          rpcUrl: { type: 'string', format: 'uri', example: 'https://eth.llamarpc.com' },
+          rpcUrl: { type: 'string', format: 'uri', example: 'https://ethereum-rpc.publicnode.com' },
           blockExplorer: { type: 'string', format: 'uri', example: 'https://etherscan.io' },
           nativeToken: { $ref: '#/components/schemas/Token' },
           supportedTokens: {
@@ -1109,7 +1121,7 @@ export const openApiDocument = {
       OrderPublic: {
         type: 'object',
         description:
-          'Public view of a payable order. Private key, payout destination, owning user, receipt metadata and linked payment are stripped out.',
+          'Public view of a payable order. Private key, payout destination, receipt metadata, linked payment, donor message and the donation-link ref are stripped out; the owner appears only as the public `user` identity.',
         properties: {
           _id: { type: 'string', example: '665f1b2c3d4e5f6a7b8c9d0e' },
           id: { type: 'string', description: 'Public short id used in the gateway URL.', example: 'a1b2c3d4e5' },
@@ -1125,8 +1137,21 @@ export const openApiDocument = {
           createdAt: { type: 'string', format: 'date-time', example: '2026-06-27T12:00:00.000Z' },
           expiresAt: { type: 'string', format: 'date-time', description: 'When the order stops being payable (20 minutes after creation).', example: '2026-06-27T12:20:00.000Z' },
           updatedAt: { type: 'string', format: 'date-time', example: '2026-06-27T12:00:00.000Z' },
-          text: { type: 'string', nullable: true, description: 'Optional donor message.', example: 'Thanks for the great work!' },
-          donation: { type: 'string', nullable: true, description: 'MongoDB id of the source donation link.', example: '665f1b2c3d4e5f6a7b8c9d0f' },
+          isDonation: {
+            type: 'boolean',
+            description:
+              'True when the order was created from a donation link. The gateway hides its telegram styling for these orders.',
+            example: true,
+          },
+          user: {
+            type: 'object',
+            description:
+              'Public display identity to show as the payment recipient. For donation orders this is the donation link\'s handle (`username` only, possibly null if the link was deleted); otherwise the owner\'s telegram-facing `name`/`username`.',
+            properties: {
+              name: { type: 'string', nullable: true, example: null },
+              username: { type: 'string', nullable: true, example: 'cool-creator' },
+            },
+          },
           rates: { $ref: '#/components/schemas/Rates' },
           pricing: {
             type: 'array',

@@ -24,7 +24,7 @@ export const getOrderById = async (req: Request, res: Response) => {
   try {
     const order = await Order.findOne({ id: req.params.id })
       .select(
-        '-privateKey -destinationToken -destinationNetwork -destinationAddress -receiptChatId -receiptMessageId -paidAt -payment -text -donation',
+        '-privateKey -destinationToken -destinationNetwork -destinationAddress -receiptChatId -receiptMessageId -paidAt -payment -text',
       )
       .lean()
       .populate('rates')
@@ -46,9 +46,28 @@ export const getOrderById = async (req: Request, res: Response) => {
       });
     }
 
+    // Donation orders must not reveal who owns them: donors only ever see the
+    // donation link's public handle, never the owner's telegram name/username.
+    // `isDonation` also tells the gateway to drop its telegram styling. The raw
+    // `donation` ref itself is stripped from the payload either way.
+    const { donation, user, ...publicOrder } = order;
+    const isDonation = Boolean(donation);
+
+    let donationUsername: string | null = null;
+
+    if (donation) {
+      const link = await DonationLink.findById(donation).select('username').lean();
+
+      donationUsername = link?.username ?? null;
+    }
+
     return res.status(200).json({
       success: true,
-      data: order,
+      data: {
+        ...publicOrder,
+        isDonation,
+        user: isDonation ? { username: donationUsername } : user,
+      },
     });
   } catch (error) {
     res.status(500).json({
