@@ -12,9 +12,13 @@ services:
       # Listen on 3000 inside the container (matches EXPOSE and the mapping below).
       PORT: 3000
       DB_URI: mongodb://mongo:27017
+      DB_NAME: ${DB_NAME:-payli}
       # Main log + a FATAL-only sibling (app.fatal.log) both land in /app/storage,
       # which is bind-mounted out to the host through the volume below.
       LOG_FILE_PATH: /app/storage/${LOG_FILENAME:-app.log}
+    depends_on:
+      mongo:
+        condition: service_healthy
     volumes:
       - '${LOG_DIRNAME:-./storage}:/app/storage'
       - /app/node_modules
@@ -23,7 +27,24 @@ services:
     ports:
       - '127.0.0.1:3030:3000'
 
+  mongo:
+    image: mongo:8.0
+    restart: unless-stopped
+    healthcheck:
+      test: ['CMD', 'mongosh', '--quiet', '--eval', "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    volumes:
+      - mongo-data:/data/db
+    networks:
+      - api
+
 networks:
   api:
     name: api
     external: true
+
+volumes:
+  mongo-data:
