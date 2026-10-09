@@ -42,6 +42,27 @@ services:
     networks:
       - api
 
+  rabbitmq:
+    image: rabbitmq:4.3.6
+    hostname: rabbitmq
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+      RABBITMQ_DEFAULT_VHOST: /
+    ports:
+      - '127.0.0.1:5672:5672'
+    healthcheck:
+      test: ['CMD', 'rabbitmq-diagnostics', '-q', 'check_port_connectivity']
+      interval: 10s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    networks:
+      - api
+
 networks:
   api:
     name: api
@@ -49,3 +70,4 @@ networks:
 
 volumes:
   mongo-data:
+  rabbitmq-data:
