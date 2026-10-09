@@ -8,6 +8,7 @@ import { envs } from './configs/envs';
 import { logger } from './configs/logger';
 import { openApiDocument } from './configs/swagger';
 import adminRoutes from './routes/adminRoutes';
+import publicRoutes from './routes/publicRoutes';
 import configRoutes from './routes/configRoutes';
 import orderRoutes from './routes/orderRoutes';
 import donationRoutes from './routes/donationRoutes';
@@ -42,6 +43,7 @@ const main = async () => {
   app.use('/config', configRoutes);
   app.use('/donations', donationRoutes);
   app.use('/admin', adminRoutes);
+  app.use('/public', publicRoutes);
 
   // API documentation: interactive Swagger UI at /swagger and the raw OpenAPI
   // document at /swagger.json (for Postman/Insomnia imports and client codegen).

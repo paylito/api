@@ -15,6 +15,8 @@
  * code documented below is one the controllers actually return.
  */
 
+import { publicPaths, publicSchemas } from './publicSwagger';
+
 export const openApiDocument = {
   openapi: '3.0.3',
   info: {
@@ -46,6 +48,9 @@ export const openApiDocument = {
       '  authentication** — they are public read / create operations.',
       '- The **Admin** endpoints are different: `POST /admin/login` is public, but every',
       '  other `/admin/*` route requires a Bearer JWT obtained from it.',
+      '- **Public activity** at `/public/overview` and `/public/payments` is anonymous',
+      '  and requires no login. Gross transfer volume and completed payment volume',
+      '  are separate metrics; public traces never include user identity fields.',
       '- Unknown routes return `404 { "message": "Route not found" }` and any uncaught',
       '  server error returns `500 { "message": "Something went wrong!", "error": "..." }`.',
     ].join('\n'),
@@ -61,6 +66,7 @@ export const openApiDocument = {
   ],
 
   tags: [
+    { name: 'Public activity', description: 'Anonymous payment metrics and transaction traces. No login required.' },
     { name: 'Health', description: 'Liveness / readiness checks.' },
     { name: 'Config', description: 'Supported blockchain networks and tokens.' },
     { name: 'Donations', description: 'Public donation links.' },
@@ -77,6 +83,7 @@ export const openApiDocument = {
   ],
 
   paths: {
+    ...publicPaths,
     '/health': {
       get: {
         tags: ['Health'],
@@ -906,6 +913,7 @@ export const openApiDocument = {
     },
 
     schemas: {
+      ...publicSchemas,
       // ----- Generic envelopes -------------------------------------------------
       ErrorResponse: {
         type: 'object',
