@@ -26,13 +26,13 @@ function symbolFor(address, network) {
 }
 function mockQuotes() {
   calls = [];
-  global.fetch = async url => {
+  global.fetch = async (url, options) => {
     const q = new URL(url).searchParams;
     const from = Object.values(NETWORKS).find(network => network.chainId === Number(q.get('fromChain')));
     const to = Object.values(NETWORKS).find(network => network.chainId === Number(q.get('toChain')));
     const symbol = symbolFor(q.get('fromToken'), from), dest = symbolFor(q.get('toToken'), to);
     const output = new BigNumber(q.get('fromAmount')).shiftedBy(-getTokenDecimals(symbol, from.id)).times(rates[symbol]).times('0.99').div(rates[dest]).shiftedBy(getTokenDecimals(dest, to.id)).integerValue(BigNumber.ROUND_DOWN);
-    calls.push({ q, output });
+    calls.push({ q, output, options });
     return { ok: true, json: async () => ({ estimate: { fromAmount: q.get('fromAmount'), toAmountMin: output.toFixed(0) }, transactionRequest: { value: '0' } }) };
   };
 }
@@ -54,6 +54,27 @@ test(`${project}: every offered payment amount covers its real quoted route with
   }
   const bscQuote = calls.find(({ q }) => q.get('fromChain') === '56' && q.get('fromToken') !== '0x' + '0'.repeat(40));
   assert.ok(BigInt(bscQuote.q.get('fromAmount')) > 10n ** 18n, 'BSC USDC uses 18 raw decimals');
+});
+test(`${project}: LI.FI quote requests authenticate with the configured API key`, async (t) => {
+  const originalKey = process.env.LIFI_API_KEY;
+  const originalFetch = global.fetch;
+  t.after(() => {
+    global.fetch = originalFetch;
+    if (originalKey === undefined) delete process.env.LIFI_API_KEY;
+    else process.env.LIFI_API_KEY = originalKey;
+  });
+  for (const apiKey of [' test-lifi-api-key ', undefined, '   ']) {
+    if (apiKey === undefined) delete process.env.LIFI_API_KEY;
+    else process.env.LIFI_API_KEY = apiKey;
+    mockQuotes();
+    const pricing = await getPricing(order, rates);
+    assert.equal(pricing.length, 6);
+    assert.ok(calls.length > 0);
+    for (const { q, options } of calls) {
+      assert.equal(new Headers(options.headers).get('x-lifi-api-key'), apiKey?.trim() || null);
+      assert.ok(!q.toString().includes('test-lifi-api-key'), 'API keys must stay out of the URL');
+    }
+  }
 });
 test(`${project}: unavailable routes are excluded while direct payouts remain payable`, async () => {
   global.fetch = async () => ({ ok: false, status: 404 });

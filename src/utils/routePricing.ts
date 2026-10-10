@@ -31,6 +31,7 @@ export const quotePaymentCost = async (
   const marginUsd = BigNumber.maximum(new BigNumber(order.amount).times('0.01'), '0.05');
   const coreRaw = new BigNumber(order.amount).div(sourcePrice).shiftedBy(decimals);
   let input = coreRaw.plus(baseFeeUsd.plus(marginUsd).div(sourcePrice).shiftedBy(decimals)).integerValue(BigNumber.ROUND_UP);
+  const apiKey = process.env.LIFI_API_KEY?.trim();
   for (let i = 0; i < 4; i += 1) {
     const query = new URLSearchParams({
       fromChain: String(source.chainId), toChain: String(dest.chainId), fromToken: fromAddress, toToken: toAddress,
@@ -38,7 +39,10 @@ export const quotePaymentCost = async (
       integrator: process.env.LIFI_INTEGRATOR || 'payli', slippage: process.env.LIFI_SLIPPAGE || '0.005',
       order: 'CHEAPEST', skipSimulation: 'true',
     });
-    const response = await fetch(`https://li.quest/v1/quote?${query}`, { signal: AbortSignal.timeout(10_000) });
+    const response = await fetch(`https://li.quest/v1/quote?${query}`, {
+      headers: apiKey ? { 'x-lifi-api-key': apiKey } : undefined,
+      signal: AbortSignal.timeout(10_000),
+    });
     if (!response.ok) throw new Error(`Payment route quote unavailable (${response.status})`);
     const quote = await response.json() as { estimate: { fromAmount: string; toAmountMin: string }; transactionRequest: { value?: string } };
     const floor = new BigNumber(quote.estimate.toAmountMin);
