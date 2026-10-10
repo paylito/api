@@ -1,6 +1,8 @@
 services:
   payli-api:
     build: .
+    env_file:
+      - .env
     # Bring the container back automatically if the process exits non-zero (a
     # crash). `unless-stopped` keeps it down only when *you* stop it on purpose.
     restart: unless-stopped

@@ -13,6 +13,14 @@ npm run build && npm start
 
 Configuration is read from environment variables — see [`.env.example`](./.env.example).
 
+Docker Compose loads the current host `.env` through `env_file`; secrets are
+excluded from the image. Set `LIFI_API_KEY` in that file and recreate the service
+with `docker compose up -d --build --force-recreate payli-api` after this update.
+After later key changes, recreating the container is enough. A plain restart
+does not reload its environment. For plain Docker, pass `--env-file .env`.
+Verify the running container's key without printing it:
+`docker compose exec payli-api node scripts/check-lifi.cjs`.
+
 ## API documentation
 
 Interactive **Swagger UI** and the raw **OpenAPI 3.0** spec are served by the running app:

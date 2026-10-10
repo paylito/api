@@ -1,5 +1,6 @@
 import { BigNumber } from 'bignumber.js';
 import { NETWORKS, TOKENS, getTokenDecimals } from './tokens';
+import { getLifiConfig, lifiRequest } from './lifiRequest';
 
 const NATIVE = '0x0000000000000000000000000000000000000000';
 
@@ -31,19 +32,15 @@ export const quotePaymentCost = async (
   const marginUsd = BigNumber.maximum(new BigNumber(order.amount).times('0.01'), '0.05');
   const coreRaw = new BigNumber(order.amount).div(sourcePrice).shiftedBy(decimals);
   let input = coreRaw.plus(baseFeeUsd.plus(marginUsd).div(sourcePrice).shiftedBy(decimals)).integerValue(BigNumber.ROUND_UP);
-  const apiKey = process.env.LIFI_API_KEY?.trim();
+  const { integrator } = getLifiConfig();
   for (let i = 0; i < 4; i += 1) {
     const query = new URLSearchParams({
       fromChain: String(source.chainId), toChain: String(dest.chainId), fromToken: fromAddress, toToken: toAddress,
       fromAmount: input.toFixed(0), fromAddress: order.smartAccount, toAddress: order.destinationAddress,
-      integrator: process.env.LIFI_INTEGRATOR || 'payli', slippage: process.env.LIFI_SLIPPAGE || '0.005',
+      integrator, slippage: process.env.LIFI_SLIPPAGE || '0.005',
       order: 'CHEAPEST', skipSimulation: 'true',
     });
-    const response = await fetch(`https://li.quest/v1/quote?${query}`, {
-      headers: apiKey ? { 'x-lifi-api-key': apiKey } : undefined,
-      signal: AbortSignal.timeout(10_000),
-    });
-    if (!response.ok) throw new Error(`Payment route quote unavailable (${response.status})`);
+    const response = await lifiRequest('quote', query, 10_000);
     const quote = await response.json() as { estimate: { fromAmount: string; toAmountMin: string }; transactionRequest: { value?: string } };
     const floor = new BigNumber(quote.estimate.toAmountMin);
     const used = new BigNumber(quote.estimate.fromAmount);

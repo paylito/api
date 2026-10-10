@@ -8,6 +8,6 @@ dist
 storage
 npm-debug.log*
 
-# NOTE: .env is intentionally NOT ignored — the app reads its config from it at
-# runtime. If you move secrets into compose `environment:` / docker secrets,
-# add `.env` here too.
+# Compose injects the current host configuration at container creation.
+.env
+.env.*
