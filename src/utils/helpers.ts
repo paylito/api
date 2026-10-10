@@ -1,6 +1,7 @@
 import { BigNumber } from 'bignumber.js';
 
 import { NETWORKS } from './tokens';
+import { quotePaymentCost } from './routePricing';
 import { randomBytes } from 'crypto';
 import { logger } from '../configs/logger';
 import { FeeConfig } from '../models/FeeConfig';
@@ -44,65 +45,44 @@ export const getServiceFee = (amountUsd: string | number) => {
 };
 
 export const getPricing = async (order: IOrder, rates: IRates) => {
-  const feeConfigsArr = await FeeConfig.find();
-
+  const configs = await FeeConfig.find();
   const serviceFeeUsd = getServiceFee(order.amount);
-
-  const pricing = feeConfigsArr
-    .map((cfg) => {
-      const network = NETWORKS[cfg.network as keyof typeof NETWORKS];
-
-      if (!network) return null;
-
-      const networkFeeUsd = new BigNumber(cfg.minFee);
-
-      const tokens = network.supportedTokens.map((token) => {
-        const priceUsd = rates[token.symbol as keyof IRates] as number;
-
-        if (!priceUsd) {
-          throw new Error(`Missing rate for ${token.symbol}`);
-        }
-
-        // Convert each USD figure to the token, rounding UP to the token's
-        // acceptable precision (3 dp for stablecoins, 4 otherwise). Rounding up
-        // keeps the payer at/above the true cost; the total is the sum of the
-        // rounded parts, so the displayed breakdown adds up exactly to the amount
-        // the gateway charges and the listener verifies.
-        const dp = token.acceptableDecimals;
-        const price = new BigNumber(priceUsd);
-
-        const amount = new BigNumber(order.amount).div(price).decimalPlaces(dp, BigNumber.ROUND_UP);
-        const serviceFee = serviceFeeUsd.div(price).decimalPlaces(dp, BigNumber.ROUND_UP);
-        const networkFee = networkFeeUsd.div(price).decimalPlaces(dp, BigNumber.ROUND_UP);
-        const total = amount.plus(serviceFee).plus(networkFee);
-
-        const totalUsd = new BigNumber(order.amount).plus(serviceFeeUsd).plus(networkFeeUsd);
-
-        return {
-          symbol: token.symbol,
-          priceUsd: price.toString(),
-
-          amountUsd: new BigNumber(order.amount).toString(),
-          amount: amount.toString(),
-
-          serviceFeeUsd: serviceFeeUsd.toString(),
-          serviceFee: serviceFee.toString(),
-
-          networkFeeUsd: networkFeeUsd.toString(),
-          networkFee: networkFee.toString(),
-
-          totalUsd: totalUsd.toString(),
-          total: total.toString(),
-        };
-      });
-
+  const pricing: IOrderPricing = [];
+  for (const cfg of configs) {
+    const network = NETWORKS[cfg.network as keyof typeof NETWORKS];
+    if (!network || !network.isAllowed || !network.supportedTokens.length) continue;
+    const baseFeeUsd = new BigNumber(cfg.minFee);
+    // At most three concurrent provider requests. Keep one fee per network so
+    // the existing checkout breakdown remains accurate for every offered token.
+    const quoted = await Promise.all(network.supportedTokens.map(async (token) => {
+      try {
+        const fee = await quotePaymentCost(order, rates as unknown as Record<string, unknown>, network.id, token.symbol, baseFeeUsd);
+        return { token, fee };
+      } catch (error) {
+        logger.warn(`Payment option unavailable: ${network.id}/${token.symbol}: ${(error as Error).message}`);
+        return null;
+      }
+    }));
+    const available = quoted.filter((entry): entry is NonNullable<typeof entry> => entry !== null);
+    if (!available.length) continue;
+    const networkFeeUsd = BigNumber.maximum(baseFeeUsd, ...available.map(entry => entry.fee));
+    const tokens = available.map(({ token }) => {
+      const price = new BigNumber(String(rates[token.symbol as keyof IRates]));
+      if (!price.isFinite() || !price.gt(0)) throw new Error(`Missing rate for ${token.symbol}`);
+      const dp = token.acceptableDecimals;
+      const amount = new BigNumber(order.amount).div(price).decimalPlaces(dp, BigNumber.ROUND_UP);
+      const serviceFee = serviceFeeUsd.div(price).decimalPlaces(dp, BigNumber.ROUND_UP);
+      const networkFee = networkFeeUsd.div(price).decimalPlaces(dp, BigNumber.ROUND_UP);
       return {
-        network: network.id,
-        networkFeeUsd: networkFeeUsd.toString(),
-        tokens,
+        symbol: token.symbol, priceUsd: price.toString(), amountUsd: new BigNumber(order.amount).toString(), amount: amount.toString(),
+        serviceFeeUsd: serviceFeeUsd.toString(), serviceFee: serviceFee.toString(),
+        networkFeeUsd: networkFeeUsd.toString(), networkFee: networkFee.toString(),
+        totalUsd: new BigNumber(order.amount).plus(serviceFeeUsd).plus(networkFeeUsd).toString(),
+        total: amount.plus(serviceFee).plus(networkFee).toString(),
       };
-    })
-    .filter(Boolean) as IOrderPricing;
-
+    });
+    pricing.push({ network: network.id, networkFeeUsd: networkFeeUsd.toString(), tokens });
+  }
+  if (!pricing.length) throw new Error('No executable payment routes available. Please try again later.');
   return pricing;
 };
